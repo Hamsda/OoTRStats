@@ -1,5 +1,6 @@
 import json
 import sys
+import re
 from os import listdir
 from os.path import isfile, join
 
@@ -18,11 +19,18 @@ def init_item(stats, item):
     stats["items"][item]["woth"] = 0
 
 
+def init_region(stats, region):
+    stats["regions"][region] = {}
+    stats["regions"][region]["is_barren"] = 0
+    stats["regions"][region]["hinted_barren"] = 0
+    stats["regions"][region]["hinted_woth"] = 0
+
+
 def aggregate_stats(inputpath, outputpath):
     stats = {}
     stats["locations"] = {}
     stats["items"] = {}
-    stats["barren"] = {}
+    stats["regions"] = {}
     stats["number_analyzed"] = 0
 
     for filename in listdir(inputpath):
@@ -52,8 +60,8 @@ def aggregate_stats(inputpath, outputpath):
                     if item not in stats["items"]:
                         init_item(stats, item)
 
-                    # if item == "Farores Wind":
-                    #    print(filename)
+                    if item == "Farores Wind":
+                        print("FW woth: ", filename)
 
                     stats["locations"][location]["woth"] += 1
                     stats["items"][item]["woth"] += 1
@@ -76,12 +84,30 @@ def aggregate_stats(inputpath, outputpath):
                         stats["items"][item]["play"] += 1
 
                 for region in data[":barren_regions"]:
-                    if region not in stats["barren"]:
-                        stats["barren"][region] = 1
-                    else:
-                        stats["barren"][region] += 1
+                    if region not in stats["regions"]:
+                        init_region(stats, region)
+                    stats["regions"][region]["is_barren"] += 1
+
+                for _, gossip in data["gossip_stones"].items():
+                    text = gossip["text"]
+
+                    if "is a foolish choice" in text:
+                        region = re.search("#(.*?)#", text).group(1)
+                        if region not in stats["regions"]:
+                            init_region(stats, region)
+                        stats["regions"][region]["hinted_barren"] += 1
+
+                    if "is on the way of the hero" in text:
+                        region = re.search("#(.*?)#", text).group(1)
+                        if region not in stats["regions"]:
+                            init_region(stats, region)
+                        stats["regions"][region]["hinted_woth"] += 1
 
                 stats["number_analyzed"] += 1
+
+    for region in stats["regions"]:
+        stats["regions"][region]["hinted_barren"] = int(stats["regions"][region]["hinted_barren"] / 2)
+        stats["regions"][region]["hinted_woth"] = int(stats["regions"][region]["hinted_woth"] / 2)
 
     with open(outputpath, 'w') as output:
         json.dump(stats, output, indent=4)
